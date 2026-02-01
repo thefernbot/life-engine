@@ -1,65 +1,116 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import SimulationCanvas from '@/components/SimulationCanvas';
+import Controls from '@/components/Controls';
+import { SimulationState, SimulationConfig, DEFAULT_CONFIG } from '@/lib/types';
+import { initSimulation, updateSimulation, resetSimulation } from '@/lib/simulation';
 
 export default function Home() {
+  const [config, setConfig] = useState<SimulationConfig>(DEFAULT_CONFIG);
+  const [state, setState] = useState<SimulationState | null>(null);
+  const [running, setRunning] = useState(false);
+  const animationRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number>(0);
+
+  // Initialize on client only to avoid hydration mismatch
+  useEffect(() => {
+    setState(initSimulation(config));
+  }, []);
+
+  const tick = useCallback((time: number) => {
+    // Aim for ~30 FPS
+    if (time - lastTimeRef.current >= 33) {
+      setState(prev => prev ? updateSimulation(prev, config) : prev);
+      lastTimeRef.current = time;
+    }
+    animationRef.current = requestAnimationFrame(tick);
+  }, [config]);
+
+  useEffect(() => {
+    if (running && state) {
+      animationRef.current = requestAnimationFrame(tick);
+    } else {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    }
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [running, tick, state]);
+
+  const handleStart = () => setRunning(true);
+  const handlePause = () => setRunning(false);
+  const handleReset = () => {
+    setRunning(false);
+    setState(resetSimulation(config));
+  };
+
+  const handleConfigChange = (changes: Partial<SimulationConfig>) => {
+    setConfig(prev => ({ ...prev, ...changes }));
+  };
+
+  // Show loading state until client-side initialization
+  if (!state) {
+    return (
+      <main className="min-h-screen bg-gray-900 p-4 md:p-8 flex items-center justify-center">
+        <div className="text-white text-xl">Loading simulation...</div>
+      </main>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="min-h-screen bg-gray-900 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-white mb-2">Life Engine</h1>
+          <p className="text-gray-400">
+            A cellular automaton that simulates evolution. Organisms eat, reproduce, mutate, and compete.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        {/* Main Content */}
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Canvas */}
+          <div className="flex-1 overflow-auto">
+            <SimulationCanvas state={state} config={config} />
+          </div>
+
+          {/* Controls Sidebar */}
+          <div className="w-full lg:w-72">
+            <Controls
+              state={state}
+              config={config}
+              running={running}
+              onStart={handleStart}
+              onPause={handlePause}
+              onReset={handleReset}
+              onConfigChange={handleConfigChange}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          </div>
         </div>
-      </main>
-    </div>
+
+        {/* Footer */}
+        <div className="mt-8 text-center text-gray-500 text-sm">
+          <p>
+            Inspired by{' '}
+            <a
+              href="https://thelifeengine.net"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:underline"
+            >
+              The Life Engine
+            </a>
+            {' '}by Max Robinson
+          </p>
+        </div>
+      </div>
+    </main>
   );
 }
